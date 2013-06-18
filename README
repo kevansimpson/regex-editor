@@ -1,0 +1,7 @@
+Online Business Systems' Regular Expression Editor
+==================================================
+
+To run:
+	mvn exec:exec
+
+This file was modified by IntelliJ IDEA 12.1.4 for binding GitHub repository
