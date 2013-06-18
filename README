@@ -1,7 +1,9 @@
-Online Business Systems' Regular Expression Editor
-==================================================
+Regular Expression Editor
+=========================
 
-To run:
+What is it?
+	A simple Swing application to test Java regular expressions.
+
+How can I run it?:
 	mvn exec:exec
 
-This file was modified by IntelliJ IDEA 12.1.4 for binding GitHub repository
