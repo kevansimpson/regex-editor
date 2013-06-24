@@ -5,6 +5,8 @@ import com.obsglobal.util.RunnableApplication;
 import org.apache.commons.lang3.StringUtils;
 
 import javax.swing.*;
+import javax.swing.event.ChangeEvent;
+import javax.swing.event.ChangeListener;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.DefaultHighlighter;
 import javax.swing.text.Highlighter;
@@ -12,7 +14,9 @@ import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.util.regex.Matcher;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.MatchResult;
 import java.util.regex.Pattern;
 
 /**
@@ -22,10 +26,12 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 
 	private Highlighter highlighter;
 	private Highlighter.HighlightPainter painter;
-	private JTextField regexTextField;
+	private JTextField regexTextField, matchingTextField;
 	private JTextArea inputTextArea;
 	private JLabel statusMessageLabel;
-	private JCheckBox[] optionBoxes;
+	private JCheckBox optionBoxes[], replaceMatchToggle;
+
+	private String unmodifiedInputText = null;
 
 	@Override
 	public String getTitle() {
@@ -42,77 +48,124 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 		try {
 			//noinspection MagicConstant
 			Pattern pattern = Pattern.compile(getRegularExpressionText(), calculatePatternOptions());
-			Matcher matcher = pattern.matcher(getInputText());
-			highlightMatches(matcher);
+			if (replaceMatchToggle.isSelected())
+				replaceMatches(pattern);
+			else
+				highlightMatches(pattern);
 		}
 		catch (Exception ex) {
-			message(ex.getMessage());
+			postMessage(ex.getMessage());
 		}
 
 		regexTextField.grabFocus();
 	}
 
-	protected void highlightMatches(Matcher matcher) {
-		highlighter.removeAllHighlights();
+	protected void replaceMatches(Pattern pattern) {
+		resetInput();
 
-		int index = 0, matches = 0;
-		while (matcher.find(index)) {
-			try {
-				highlighter.addHighlight(matcher.start(), matcher.end(), painter);
+		int matches = 0;
+		String input = getInputText();
+		StringBuilder builder = new StringBuilder();
+		List<int[]> replacedResults = new ArrayList<int[]>();
+
+		try {
+			String[] splits = pattern.split(input);
+			// append initial non-match
+			builder.append(splits[0]);
+
+			List<MatchResult> matchResults = RegexUtil.findAllMatches(pattern, input);
+			for (MatchResult result : matchResults) {
+				String replacementText = result.group().replaceFirst(pattern.pattern(), getMatchingExpressionText());
+				replacedResults.add(new int[] { builder.length(), builder.length() + replacementText.length() });
+
+				builder.append(replacementText);
+				++matches;
+				builder.append(splits[matches]);
+			}
+
+			inputTextArea.setText(builder.toString());
+			postMatches(matches);
+
+			for (int[] replacementPoints : replacedResults)
+				highlighter.addHighlight(replacementPoints[0], replacementPoints[1], painter);
+		}
+		catch (BadLocationException ex) {
+			postMessage("ERROR: ", ex.getMessage());
+		}
+	}
+
+	protected void highlightMatches(Pattern pattern) {
+		resetInput();
+
+		int matches = 0;
+		try {
+			List<MatchResult> matchResults = RegexUtil.findAllMatches(pattern, getInputText());
+			for (MatchResult result : matchResults) {
+				highlighter.addHighlight(result.start(), result.end(), painter);
 				++matches;
 			}
-			catch (BadLocationException ex) {
-				message("ERROR: ", ex.getMessage());
-			}
-
-			index = matcher.end();
+		}
+		catch (BadLocationException ex) {
+			postMessage("ERROR: ", ex.getMessage());
 		}
 
-		message(matches, " matches");
+		postMatches(matches);
+	}
+
+	protected void editInput(JToggleButton editButton) {
+		inputTextArea.setEditable(editButton.isSelected());
+		if (!editButton.isSelected())
+			unmodifiedInputText = inputTextArea.getText();
 	}
 
 	protected void pasteInput() {
 		try {
-			inputTextArea.setText(StringUtils.defaultString((String)
-					Toolkit.getDefaultToolkit().getSystemClipboard().getData(DataFlavor.stringFlavor), ""));
+			unmodifiedInputText = StringUtils.defaultString((String)
+					Toolkit.getDefaultToolkit().getSystemClipboard().getData(DataFlavor.stringFlavor), "");
+			inputTextArea.setText(unmodifiedInputText);
 		}
 		catch (Exception ex) {
-			message("Failed to paste input: ", ex.getMessage());
+			postError("Failed to paste input: ", ex.getMessage());
 		}
 	}
-	protected void message(Object... messageParts) {
+
+	protected void resetInput() {
+		highlighter.removeAllHighlights();
+		inputTextArea.setText(unmodifiedInputText);
+	}
+
+	protected void postMatches(int tally) {
+		if (tally >= 0) {
+			statusMessageLabel.setForeground(Color.green.darker());
+			postMessage(tally, tally == 1 ? " match" : " matches");
+		}
+	}
+
+	protected void postError(Object... messageParts) {
+		statusMessageLabel.setForeground(Color.red);
+		postMessage(messageParts);
+	}
+
+	protected void postMessage(Object... messageParts) {
 		statusMessageLabel.setText(StringUtils.join(messageParts));
 	}
 
 	protected void initialize() {
 		setLayout(new BorderLayout(5, 5));
 
-		Box regexBox = Box.createVerticalBox();
-		JPanel regexPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
-		regexPanel.add(new JLabel("Test Expression:"));
-		regexTextField = new JTextField("", 80);
-		regexPanel.add(regexTextField);
-		JButton applyButton = new JButton("Apply");
-		applyButton.setMnemonic('A');
-		applyButton.addActionListener(new ActionListener() {
-			@Override
-			public void actionPerformed(ActionEvent e) {
-				applyRegularExpression();
-			}
-		});
-		regexPanel.add(applyButton);
-
-		regexBox.add(regexPanel);
-		regexBox.add(createPatternOptionsPanel());
-		regexBox.setBorder(BorderFactory.createCompoundBorder(
-				BorderFactory.createEmptyBorder(10, 10, 5, 10),
-				BorderFactory.createLineBorder(Color.lightGray, 1)));
-		add(regexBox, BorderLayout.NORTH);
+		add(createHeaderPanel(), BorderLayout.NORTH);
 
 		JPanel labelPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
 		statusMessageLabel = new JLabel("0 Matches");
 		labelPanel.add(new JLabel("Target Text:"));
 		labelPanel.add(Box.createHorizontalStrut(10));
+		final JToggleButton editButton = new JToggleButton("Edit", false);
+		editButton.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				editInput(editButton);
+			}
+		});
 		JButton pasteButton = new JButton("Paste");
 		pasteButton.addActionListener(new ActionListener() {
 			@Override
@@ -120,6 +173,8 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 				pasteInput();
 			}
 		});
+		labelPanel.add(editButton);
+		labelPanel.add(Box.createHorizontalStrut(25));
 		labelPanel.add(pasteButton);
 		labelPanel.add(Box.createHorizontalStrut(50));
 		labelPanel.add(statusMessageLabel);
@@ -129,6 +184,7 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 		painter = new DefaultHighlighter.DefaultHighlightPainter(Color.green);
 		inputTextArea = new JTextArea("<Enter the text to evaluate here>", 25, 100);
 		inputTextArea.setHighlighter(highlighter);
+		inputTextArea.setEditable(false);
 		inputBox.add(new JScrollPane(inputTextArea));
 
 		Box centerBox = Box.createVerticalBox();
@@ -138,6 +194,118 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 				BorderFactory.createEmptyBorder(5, 10, 10, 10),
 				BorderFactory.createLineBorder(Color.lightGray, 1)));
 		add(centerBox, BorderLayout.CENTER);
+	}
+
+	protected JPanel createPatternOptionsPanel() {
+		optionBoxes = new JCheckBox[OPTIONS_LENGTH];
+		JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
+		for (int index = 0; index < OPTIONS_LENGTH; index++) {
+			optionBoxes[index] = new JCheckBox(OPTION_DESCRIPTIONS[index], false);
+			optionBoxes[index].setToolTipText(OPTION_TOOLTIPS[index]);
+			panel.add(optionBoxes[index]);
+		}
+
+		panel.setBorder(BorderFactory.createLineBorder(Color.lightGray, 1));
+
+		return panel;
+	}
+
+	protected int calculatePatternOptions() {
+		int options = 0;
+		for (int index = 0; index < OPTIONS_LENGTH; index++)
+			if (optionBoxes[index].isSelected())
+				options |= OPTIONS[index];
+
+		return options;
+	}
+
+	protected JPanel createHeaderPanel() {
+		JPanel headerPanel = new JPanel(new GridBagLayout());
+		GridBagConstraints constraints = new GridBagConstraints();
+		constraints.insets = new Insets(5, 5, 5, 5);
+		constraints.anchor = GridBagConstraints.WEST;
+		// regex label
+		constraints.gridx = 0;
+		constraints.gridy = 0;
+		constraints.insets = new Insets(5, 5, 5, 5);
+		headerPanel.add(new JLabel("Test Expression:", JLabel.LEFT), constraints);
+		// regex input
+		regexTextField = new JTextField("", 75);
+		constraints.gridx = 1;
+		constraints.gridy = 0;
+		constraints.gridwidth = 4;
+		constraints.insets = new Insets(5, 5, 5, 5);
+		headerPanel.add(regexTextField, constraints);
+		// apply button
+		JButton applyButton = new JButton("Apply");
+		applyButton.setMnemonic('A');
+		applyButton.addActionListener(new ActionListener() {
+			@Override
+			public void actionPerformed(ActionEvent e) {
+				applyRegularExpression();
+			}
+		});
+		constraints.gridx = 5;
+		constraints.gridy = 0;
+		constraints.gridwidth = 1;
+		constraints.insets = new Insets(5, 5, 5, 5);
+		headerPanel.add(wrap(applyButton), constraints);
+
+		// options label
+		constraints.gridx = 0;
+		constraints.gridy = 1;
+		constraints.insets = new Insets(5, 5, 5, 5);
+		headerPanel.add(new JLabel("Pattern Options:"), constraints);
+		// options panel
+		constraints.gridx = 1;
+		constraints.gridy = 1;
+		constraints.gridwidth = 4;
+		constraints.insets = new Insets(5, 5, 5, 5);
+		headerPanel.add(createPatternOptionsPanel(), constraints);
+		// filler
+		constraints.gridx = 5;
+		constraints.gridy = 1;
+		constraints.gridwidth = 1;
+		constraints.insets = new Insets(5, 5, 5, 5);
+		headerPanel.add(Box.createVerticalBox(), constraints);
+
+		// match label
+		constraints.gridx = 0;
+		constraints.gridy = 2;
+		constraints.insets = new Insets(5, 5, 5, 5);
+		headerPanel.add(new JLabel("Replacement Text:"), constraints);
+		// match input
+		matchingTextField = new JTextField("", 75);
+		constraints.gridx = 1;
+		constraints.gridy = 2;
+		constraints.gridwidth = 4;
+		constraints.insets = new Insets(5, 5, 5, 5);
+		matchingTextField.setEnabled(false);
+		headerPanel.add(matchingTextField, constraints);
+		// filler
+		replaceMatchToggle = new JCheckBox("Replace");
+		constraints.gridx = 5;
+		constraints.gridy = 2;
+		constraints.gridwidth = 1;
+		constraints.insets = new Insets(5, 5, 5, 5);
+		replaceMatchToggle.addChangeListener(new ChangeListener() {
+			@Override
+			public void stateChanged(ChangeEvent e) {
+				matchingTextField.setEnabled(((JCheckBox) e.getSource()).isSelected());
+			}
+		});
+		headerPanel.add(replaceMatchToggle, constraints);
+
+		headerPanel.setBorder(BorderFactory.createCompoundBorder(
+				BorderFactory.createEmptyBorder(10, 10, 5, 10),
+				BorderFactory.createLineBorder(Color.lightGray, 1)));
+		return headerPanel;
+	}
+
+	private JPanel wrap(JComponent component) {
+		JPanel outerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
+		outerPanel.add(component);
+		return outerPanel;
 	}
 
 	private static int[] OPTIONS = {
@@ -168,37 +336,19 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 			"In this mode, only the '\\n' line terminator is recognized in the behavior of ., ^, and $.\n" +
 			"Unix lines mode can also be enabled via the embedded flag expression (?d)."
 	};
-
-	private JPanel createPatternOptionsPanel() {
-		optionBoxes = new JCheckBox[OPTIONS_LENGTH];
-		JPanel panel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
-		for (int index = 0; index < OPTIONS_LENGTH; index++) {
-			optionBoxes[index] = new JCheckBox(OPTION_DESCRIPTIONS[index], false);
-			optionBoxes[index].setToolTipText(OPTION_TOOLTIPS[index]);
-			panel.add(optionBoxes[index]);
-		}
-
-		JPanel outerPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 5));
-		panel.setBorder(BorderFactory.createLineBorder(Color.lightGray, 1));
-		outerPanel.add(new JLabel("Pattern Options:"));
-		outerPanel.add(panel);
-		return outerPanel;
-	}
-
-	private int calculatePatternOptions() {
-		int options = 0;
-		for (int index = 0; index < OPTIONS_LENGTH; index++)
-			if (optionBoxes[index].isSelected())
-				options |= OPTIONS[index];
-
-		return options;
-	}
 	private String getInputText() {
-		return StringUtils.defaultString(inputTextArea.getText(), "");
+		if (unmodifiedInputText == null)
+			unmodifiedInputText = StringUtils.defaultString(inputTextArea.getText(), "");
+
+		return unmodifiedInputText;
 	}
 
 	private String getRegularExpressionText() {
 		return StringUtils.defaultString(regexTextField.getText(), "");
+	}
+
+	private String getMatchingExpressionText() {
+		return StringUtils.defaultString(matchingTextField.getText(), "");
 	}
 
 	public static void main(String[] args) {

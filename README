@@ -4,6 +4,6 @@ Regular Expression Editor
 What is it?
 	A simple Swing application to test Java regular expressions.
 
-How can I run it?:
+How can I run it?
 	mvn exec:exec
 
