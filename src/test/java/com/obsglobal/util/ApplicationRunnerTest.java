@@ -25,4 +25,9 @@ public class ApplicationRunnerTest {
 	public void testBadInputCreateFrame() throws Exception {
 		ApplicationRunner.createFrame(null, null);
 	}
+
+	@Test(expected = InstantiationException.class)
+	public void testPrivateConstructor() throws Exception {
+		UtilTestHelper.testPrivateConstructor(ApplicationRunner.class);
+	}
 }

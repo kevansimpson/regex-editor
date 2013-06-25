@@ -5,8 +5,8 @@ import javax.swing.*;
 /**
  * Todo: add javadoc
  */
-public interface RunnableApplication {
+public interface RunnableApplication<C extends JComponent> {
 	String getTitle();
 
-	JComponent getViewComponent();
+	C getViewComponent();
 }

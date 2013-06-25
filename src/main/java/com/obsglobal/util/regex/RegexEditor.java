@@ -22,7 +22,7 @@ import java.util.regex.Pattern;
 /**
  * Basic regex editor.
  */
-public class RegexEditor extends JPanel implements RunnableApplication {
+public class RegexEditor extends JPanel implements RunnableApplication<RegexEditor> {
 
 	private Highlighter highlighter;
 	private Highlighter.HighlightPainter painter;
@@ -39,7 +39,7 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 	}
 
 	@Override
-	public JComponent getViewComponent() {
+	public RegexEditor getViewComponent() {
 		initialize();
 		return this;
 	}
@@ -54,13 +54,13 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 				highlightMatches(pattern);
 		}
 		catch (Exception ex) {
-			postMessage(ex.getMessage());
+			postError("ERROR - Failed to apply regex: ", ex.getMessage());
 		}
 
 		regexTextField.grabFocus();
 	}
 
-	protected void replaceMatches(Pattern pattern) {
+	protected void replaceMatches(Pattern pattern) throws BadLocationException {
 		resetInput();
 
 		int matches = 0;
@@ -68,45 +68,35 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 		StringBuilder builder = new StringBuilder();
 		List<int[]> replacedResults = new ArrayList<int[]>();
 
-		try {
-			String[] splits = pattern.split(input);
-			// append initial non-match
-			builder.append(splits[0]);
+		String[] splits = pattern.split(input);
+		// append initial non-match
+		builder.append(splits[0]);
 
-			List<MatchResult> matchResults = RegexUtil.findAllMatches(pattern, input);
-			for (MatchResult result : matchResults) {
-				String replacementText = result.group().replaceFirst(pattern.pattern(), getMatchingExpressionText());
-				replacedResults.add(new int[] { builder.length(), builder.length() + replacementText.length() });
+		List<MatchResult> matchResults = RegexUtil.findAllMatches(pattern, input);
+		for (MatchResult result : matchResults) {
+			String replacementText = result.group().replaceFirst(pattern.pattern(), getMatchingExpressionText());
+			replacedResults.add(new int[] { builder.length(), builder.length() + replacementText.length() });
 
-				builder.append(replacementText);
-				++matches;
-				builder.append(splits[matches]);
-			}
-
-			inputTextArea.setText(builder.toString());
-			postMatches(matches);
-
-			for (int[] replacementPoints : replacedResults)
-				highlighter.addHighlight(replacementPoints[0], replacementPoints[1], painter);
+			builder.append(replacementText);
+			++matches;
+			builder.append(splits[matches]);
 		}
-		catch (BadLocationException ex) {
-			postMessage("ERROR: ", ex.getMessage());
-		}
+
+		inputTextArea.setText(builder.toString());
+		postMatches(matches);
+
+		for (int[] replacementPoints : replacedResults)
+			highlighter.addHighlight(replacementPoints[0], replacementPoints[1], painter);
 	}
 
-	protected void highlightMatches(Pattern pattern) {
+	protected void highlightMatches(Pattern pattern) throws BadLocationException {
 		resetInput();
 
 		int matches = 0;
-		try {
-			List<MatchResult> matchResults = RegexUtil.findAllMatches(pattern, getInputText());
-			for (MatchResult result : matchResults) {
-				highlighter.addHighlight(result.start(), result.end(), painter);
-				++matches;
-			}
-		}
-		catch (BadLocationException ex) {
-			postMessage("ERROR: ", ex.getMessage());
+		List<MatchResult> matchResults = RegexUtil.findAllMatches(pattern, getInputText());
+		for (MatchResult result : matchResults) {
+			highlighter.addHighlight(result.start(), result.end(), painter);
+			++matches;
 		}
 
 		postMatches(matches);
@@ -115,23 +105,23 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 	protected void editInput(JToggleButton editButton) {
 		inputTextArea.setEditable(editButton.isSelected());
 		if (!editButton.isSelected())
-			unmodifiedInputText = inputTextArea.getText();
+			setUnmodifiedInputText(inputTextArea.getText());
 	}
 
 	protected void pasteInput() {
 		try {
-			unmodifiedInputText = StringUtils.defaultString((String)
-					Toolkit.getDefaultToolkit().getSystemClipboard().getData(DataFlavor.stringFlavor), "");
-			inputTextArea.setText(unmodifiedInputText);
+			setUnmodifiedInputText(StringUtils.defaultString((String)
+					Toolkit.getDefaultToolkit().getSystemClipboard().getData(DataFlavor.stringFlavor), ""));
+			inputTextArea.setText(getUnmodifiedInputText());
 		}
 		catch (Exception ex) {
-			postError("Failed to paste input: ", ex.getMessage());
+			postError("ERROR - Failed to paste input: ", ex.getMessage());
 		}
 	}
 
 	protected void resetInput() {
 		highlighter.removeAllHighlights();
-		inputTextArea.setText(unmodifiedInputText);
+		inputTextArea.setText(getUnmodifiedInputText());
 	}
 
 	protected void postMatches(int tally) {
@@ -160,6 +150,7 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 		labelPanel.add(new JLabel("Target Text:"));
 		labelPanel.add(Box.createHorizontalStrut(10));
 		final JToggleButton editButton = new JToggleButton("Edit", false);
+		editButton.setName("button-edit");
 		editButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
@@ -167,6 +158,7 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 			}
 		});
 		JButton pasteButton = new JButton("Paste");
+		pasteButton.setName("button-paste");
 		pasteButton.addActionListener(new ActionListener() {
 			@Override
 			public void actionPerformed(ActionEvent e) {
@@ -182,9 +174,10 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 		Box inputBox = Box.createVerticalBox();
 		highlighter = new DefaultHighlighter();
 		painter = new DefaultHighlighter.DefaultHighlightPainter(Color.green);
-		inputTextArea = new JTextArea("<Enter the text to evaluate here>", 25, 100);
+		inputTextArea = new JTextArea("", 25, 100);
 		inputTextArea.setHighlighter(highlighter);
 		inputTextArea.setEditable(false);
+		inputTextArea.setName("textArea-input");
 		inputBox.add(new JScrollPane(inputTextArea));
 
 		Box centerBox = Box.createVerticalBox();
@@ -202,6 +195,7 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 		for (int index = 0; index < OPTIONS_LENGTH; index++) {
 			optionBoxes[index] = new JCheckBox(OPTION_DESCRIPTIONS[index], false);
 			optionBoxes[index].setToolTipText(OPTION_TOOLTIPS[index]);
+			optionBoxes[index].setName("checkbox-"+ OPTION_DESCRIPTIONS[index]);
 			panel.add(optionBoxes[index]);
 		}
 
@@ -235,6 +229,7 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 		constraints.gridy = 0;
 		constraints.gridwidth = 4;
 		constraints.insets = new Insets(5, 5, 5, 5);
+		regexTextField.setName("textField-regex");
 		headerPanel.add(regexTextField, constraints);
 		// apply button
 		JButton applyButton = new JButton("Apply");
@@ -249,6 +244,7 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 		constraints.gridy = 0;
 		constraints.gridwidth = 1;
 		constraints.insets = new Insets(5, 5, 5, 5);
+		applyButton.setName("button-apply");
 		headerPanel.add(wrap(applyButton), constraints);
 
 		// options label
@@ -281,6 +277,7 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 		constraints.gridwidth = 4;
 		constraints.insets = new Insets(5, 5, 5, 5);
 		matchingTextField.setEnabled(false);
+		matchingTextField.setName("textField-matching");
 		headerPanel.add(matchingTextField, constraints);
 		// filler
 		replaceMatchToggle = new JCheckBox("Replace");
@@ -288,6 +285,7 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 		constraints.gridy = 2;
 		constraints.gridwidth = 1;
 		constraints.insets = new Insets(5, 5, 5, 5);
+		replaceMatchToggle.setName("checkbox-replace");
 		replaceMatchToggle.addChangeListener(new ChangeListener() {
 			@Override
 			public void stateChanged(ChangeEvent e) {
@@ -308,46 +306,56 @@ public class RegexEditor extends JPanel implements RunnableApplication {
 		return outerPanel;
 	}
 
-	private static int[] OPTIONS = {
-			Pattern.DOTALL, Pattern.MULTILINE, Pattern.CANON_EQ, Pattern.CASE_INSENSITIVE, Pattern.COMMENTS,
-			Pattern.LITERAL, Pattern.UNICODE_CASE, Pattern.UNIX_LINES
+	static int[] OPTIONS = {
+			Pattern.UNIX_LINES, Pattern.CASE_INSENSITIVE, Pattern.COMMENTS, Pattern.MULTILINE,
+			Pattern.LITERAL, Pattern.DOTALL, Pattern.UNICODE_CASE, Pattern.CANON_EQ
 	};
-	private static final int OPTIONS_LENGTH = OPTIONS.length;
-	private static String[] OPTION_DESCRIPTIONS = {
-			"DOTALL", "MULTILINE", "CANON_EQ", "CASE INSENSITIVE", "COMMENTS",
-			"LITERAL", "UNICODE CASE", "UNIX_LINES"
+	static final int OPTIONS_LENGTH = OPTIONS.length;
+	static String[] OPTION_DESCRIPTIONS = {
+			"UNIX_LINES", "CASE_INSENSITIVE", "COMMENTS", "MULTILINE",
+			"LITERAL", "DOTALL", "UNICODE_CASE", "CANON_EQ"
 	};
-	private static String[] OPTION_TOOLTIPS = {
-			"In dotall mode, the expression . matches any character, including a line terminator. By default this expression does not match line terminators.\n" +
-			"Dotall mode can also be enabled via the embedded flag expression (?s).",
-			"In multiline mode the expressions ^ and $ match just after or just before, respectively, a line terminator or the end of the input sequence. By default these expressions only match at the beginning and the end of the entire input sequence.\n" +
-			"Multiline mode can also be enabled via the embedded flag expression (?m).",
-			"When this flag is specified then two characters will be considered to match if, and only if, their full canonical decompositions match. The expression \"a\\u030A\", for example, will match the string \"\\u00E5\" when this flag is specified. By default, matching does not take canonical equivalence into account.\n" +
-			"There is no embedded flag character for enabling canonical equivalence.",
+	static String[] OPTION_TOOLTIPS = {
+			"In this mode, only the '\\n' line terminator is recognized in the behavior of ., ^, and $.\n" +
+			"Unix lines mode can also be enabled via the embedded flag expression (?d).",
 			"By default, case-insensitive matching assumes that only characters in the US-ASCII charset are being matched. Unicode-aware case-insensitive matching can be enabled by specifying the UNICODE_CASE flag in conjunction with this flag.\n" +
 			"Case-insensitive matching can also be enabled via the embedded flag expression (?i).",
 			"In this mode, whitespace is ignored, and embedded comments starting with # are ignored until the end of a line.\n" +
 			"Comments mode can also be enabled via the embedded flag expression (?x).",
+			"In multiline mode the expressions ^ and $ match just after or just before, respectively, a line terminator or the end of the input sequence. By default these expressions only match at the beginning and the end of the entire input sequence.\n" +
+			"Multiline mode can also be enabled via the embedded flag expression (?m).",
 			"When this flag is specified then the input string that specifies the pattern is treated as a sequence of literal characters. Metacharacters or escape sequences in the input sequence will be given no special meaning.\n" +
 			"The flags CASE_INSENSITIVE and UNICODE_CASE retain their impact on matching when used in conjunction with this flag. The other flags become superfluous.\n" +
 			"There is no embedded flag character for enabling literal parsing.",
+			"In dotall mode, the expression . matches any character, including a line terminator. By default this expression does not match line terminators.\n" +
+			"Dotall mode can also be enabled via the embedded flag expression (?s).",
 			"When this flag is specified then case-insensitive matching, when enabled by the CASE_INSENSITIVE flag, is done in a manner consistent with the Unicode Standard. By default, case-insensitive matching assumes that only characters in the US-ASCII charset are being matched.\n" +
 			"Unicode-aware case folding can also be enabled via the embedded flag expression (?u).",
-			"In this mode, only the '\\n' line terminator is recognized in the behavior of ., ^, and $.\n" +
-			"Unix lines mode can also be enabled via the embedded flag expression (?d)."
+			"When this flag is specified then two characters will be considered to match if, and only if, their full canonical decompositions match. The expression \"a\\u030A\", for example, will match the string \"\\u00E5\" when this flag is specified. By default, matching does not take canonical equivalence into account.\n" +
+			"There is no embedded flag character for enabling canonical equivalence."
 	};
-	private String getInputText() {
+
+	protected String getInputText() {
 		if (unmodifiedInputText == null)
 			unmodifiedInputText = StringUtils.defaultString(inputTextArea.getText(), "");
 
 		return unmodifiedInputText;
 	}
 
-	private String getRegularExpressionText() {
+	
+	protected String getUnmodifiedInputText() {
+		return unmodifiedInputText;
+	}
+
+	protected void setUnmodifiedInputText(String unmodifiedInput) {
+		unmodifiedInputText = unmodifiedInput;
+	}
+
+	protected String getRegularExpressionText() {
 		return StringUtils.defaultString(regexTextField.getText(), "");
 	}
 
-	private String getMatchingExpressionText() {
+	protected String getMatchingExpressionText() {
 		return StringUtils.defaultString(matchingTextField.getText(), "");
 	}
 

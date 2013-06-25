@@ -15,11 +15,11 @@ import java.util.regex.Pattern;
  * Unit test for {@link RegexUtil}.
  */
 public class RegexUtilTest {
-	private static final String input = "abcABCfooabcDEFbarabcGHIfooabcZYXbar";
+	public static final String INPUT = "abcABCfooabcDEFbarabcGHIfooabcZYXbar";
 
 	@Test
 	public void testSimpleFindAllMatches() throws Exception {
-		List<MatchResult> matchResults = RegexUtil.findAllMatches(Pattern.compile("abc"), input);
+		List<MatchResult> matchResults = RegexUtil.findAllMatches(Pattern.compile("abc"), INPUT);
 		assertEquals(4, matchResults.size());
 		// first match
 		MatchResult result = matchResults.get(0);
@@ -41,7 +41,7 @@ public class RegexUtilTest {
 
 	@Test
 	public void testFindAllMatches() throws Exception {
-		List<MatchResult> matchResults = RegexUtil.findAllMatches(Pattern.compile("foo|bar"), input);
+		List<MatchResult> matchResults = RegexUtil.findAllMatches(Pattern.compile("foo|bar"), INPUT);
 		assertEquals(4, matchResults.size());
 		// first match
 		MatchResult result = matchResults.get(0);
@@ -63,7 +63,7 @@ public class RegexUtilTest {
 
 	@Test
 	public void testFindFirstMatch() throws Exception {
-		MatchResult matchResult = RegexUtil.findFirstMatch(Pattern.compile("foo|bar"), input);
+		MatchResult matchResult = RegexUtil.findFirstMatch(Pattern.compile("foo|bar"), INPUT);
 		assertNotNull(matchResult);
 		assertEquals(6, matchResult.start());
 		assertEquals(9, matchResult.end());
@@ -71,20 +71,20 @@ public class RegexUtilTest {
 
 	@Test
 	public void testFindNoFirstMatch() throws Exception {
-		MatchResult matchResult = RegexUtil.findFirstMatch(Pattern.compile("jedi"), input);
+		MatchResult matchResult = RegexUtil.findFirstMatch(Pattern.compile("jedi"), INPUT);
 		assertNull(matchResult);
 	}
 
 	@Test
 	public void testFindNoMatches() throws Exception {
-		List<MatchResult> matchResults = RegexUtil.findAllMatches(Pattern.compile("jedi"), input);
+		List<MatchResult> matchResults = RegexUtil.findAllMatches(Pattern.compile("jedi"), INPUT);
 		assertNotNull(matchResults);
 		assertEquals(0, matchResults.size());
 	}
 
 	@Test(expected = NullPointerException.class)
 	public void testFirstNullPatternParameter() throws Exception {
-		RegexUtil.findFirstMatch(null, input);
+		RegexUtil.findFirstMatch(null, INPUT);
 	}
 
 	@Test(expected = NullPointerException.class)
@@ -94,7 +94,7 @@ public class RegexUtilTest {
 
 	@Test(expected = NullPointerException.class)
 	public void testAllNullPatternParameter() throws Exception {
-		RegexUtil.findAllMatches(null, input);
+		RegexUtil.findAllMatches(null, INPUT);
 	}
 
 	@Test(expected = NullPointerException.class)
